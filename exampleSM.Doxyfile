@@ -1,0 +1,5 @@
+# This is an example configuration for what
+# to include in a project which shall use
+# the filter for files defining SML transition tables
+FILTER_PATTERNS=*_state_machine_sml.hpp="cmake -P sml2plantUml_filter.cmake"
+PLANTUML_JAR_PATH=/usr/share/plantuml/
