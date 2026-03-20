@@ -35,9 +35,13 @@ if(DEFINED ENV{DOC_INCLUDE_DIRS})
     set(EXTRA_INCLUDE_DIRS "-DEXTRA_INCLUDE_DIRS=$ENV{DOC_INCLUDE_DIRS}")
 endif()
 
+# Serialize concurrent filter invocations (Doxygen may call this in parallel).
+set(LOCK_FILE "${BUILD_DIR}/.filter.lock")
+file(LOCK "${LOCK_FILE}" TIMEOUT 120)
+
 execute_process(
     COMMAND
-        cmake -S "${SOURCE_DIR}" -B "${BUILD_DIR}" ${TOOLCHAIN_ARG}
+        cmake -G Ninja -S "${SOURCE_DIR}" -B "${BUILD_DIR}" ${TOOLCHAIN_ARG}
         ${EXTRA_CXX_FLAGS} ${EXTRA_INCLUDE_DIRS}
         -DHEADER_TO_CHECK="${HEADER_ABS}"
         -DSTATE_MACHINE_NAME="${STATE_MACHINE_NAME}"
@@ -46,6 +50,7 @@ execute_process(
 )
 
 if(NOT configure_result EQUAL 0)
+    file(LOCK "${LOCK_FILE}" RELEASE)
     message(FATAL_ERROR "CMake configure failed")
 endif()
 
@@ -57,6 +62,7 @@ execute_process(
 )
 
 if(NOT build_result EQUAL 0)
+    file(LOCK "${LOCK_FILE}" RELEASE)
     message(FATAL_ERROR "Build failed")
 endif()
 
@@ -74,6 +80,8 @@ execute_process(
     RESULT_VARIABLE run_result
 )
 
+file(LOCK "${LOCK_FILE}" RELEASE)
+
 if(NOT run_result EQUAL 0)
     message(FATAL_ERROR "Execution failed")
 endif()
@@ -90,6 +98,6 @@ string(CONCAT DOC_BLOCK
 # CMake's message() writes to stderr, so we write to a temp file and use
 # cmake -E cat which outputs to stdout.
 file(READ "${HEADER_ABS}" CONTENT)
-set(FILTER_OUTPUT_FILE "${BUILD_DIR}/_filter_output.tmp")
+set(FILTER_OUTPUT_FILE "${BUILD_DIR}/_filter_output_${STATE_MACHINE_NAME}.tmp")
 file(WRITE "${FILTER_OUTPUT_FILE}" "${CONTENT}\n${DOC_BLOCK}")
 execute_process(COMMAND ${CMAKE_COMMAND} -E cat "${FILTER_OUTPUT_FILE}")
