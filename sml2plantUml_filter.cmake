@@ -37,8 +37,20 @@ endif()
 
 # Serialize concurrent filter invocations (Doxygen may call this in parallel).
 set(LOCK_FILE "${BUILD_DIR}/.filter.lock")
-file(LOCK "${LOCK_FILE}" TIMEOUT 120)
 
+# Configure lock timeout: use DOC_FILTER_LOCK_TIMEOUT if set, otherwise default to 600 seconds.
+set(FILTER_LOCK_TIMEOUT 600)
+if(DEFINED ENV{DOC_FILTER_LOCK_TIMEOUT} AND NOT "$ENV{DOC_FILTER_LOCK_TIMEOUT}" STREQUAL "")
+    set(FILTER_LOCK_TIMEOUT "$ENV{DOC_FILTER_LOCK_TIMEOUT}")
+endif()
+
+file(LOCK "${LOCK_FILE}" TIMEOUT ${FILTER_LOCK_TIMEOUT} RESULT_VARIABLE lock_result)
+if(NOT lock_result STREQUAL "0")
+    message(FATAL_ERROR
+        "Failed to acquire filter lock file '${LOCK_FILE}' within ${FILTER_LOCK_TIMEOUT} seconds "
+        "(lock_result='${lock_result}'). "
+        "If your builds are slow or highly parallel, increase DOC_FILTER_LOCK_TIMEOUT.")
+endif()
 execute_process(
     COMMAND
         cmake -G Ninja -S "${SOURCE_DIR}" -B "${BUILD_DIR}" ${TOOLCHAIN_ARG}
