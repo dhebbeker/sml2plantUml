@@ -33,7 +33,7 @@ making it easy to visualize and document your state machine designs.
   the file name. The required pattern is `**/XYZ_state_machine_sml.hpp` where
   - `**/` is the path to the file
   - `XYZ` is the name of the state machine to be processed
-  - `_state_machine_sml\\.hpp` is a fixed pattern to filter for those files
+  - `_state_machine_sml.hpp` is a fixed pattern to filter for those files
 - In each such file, only one transition table may be transformed to
   a PlantUML diagram.
 
@@ -49,11 +49,6 @@ Add a [`FILTER_PATTERNS`](https://www.doxygen.nl/manual/config.html#cfg_filter_p
 entry to your doxygen configuration with
 the path to this tool and the file pattern for files which define
 transition tables.
-
-As additional argument the path to the target directory for the
-generated PlantUML diagram source files should be given.
-That path must be part of the [`EXAMPLE_PATH`](https://www.doxygen.nl/manual/config.html#cfg_example_path)
-configuration option.
 
 ## How it works
 
