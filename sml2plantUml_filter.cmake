@@ -34,6 +34,19 @@ endif()
 
 get_filename_component(HEADER_ABS "${HEADER}" ABSOLUTE)
 
+# Override lock timeout from environment if valid.
+if(DEFINED ENV{DOC_FILTER_LOCK_TIMEOUT} AND NOT "$ENV{DOC_FILTER_LOCK_TIMEOUT}" STREQUAL "")
+    string(STRIP "$ENV{DOC_FILTER_LOCK_TIMEOUT}" _DOC_FILTER_LOCK_TIMEOUT_STRIPPED)
+    string(REGEX MATCH "^[0-9]+$" _DOC_FILTER_LOCK_TIMEOUT_IS_INT "${_DOC_FILTER_LOCK_TIMEOUT_STRIPPED}")
+    if(_DOC_FILTER_LOCK_TIMEOUT_IS_INT)
+        set(FILTER_LOCK_TIMEOUT "${_DOC_FILTER_LOCK_TIMEOUT_STRIPPED}")
+    else()
+        message(WARNING
+            "Ignoring invalid DOC_FILTER_LOCK_TIMEOUT value '$ENV{DOC_FILTER_LOCK_TIMEOUT}'. "
+            "Expected a non-negative integer number of seconds. Using default ${FILTER_LOCK_TIMEOUT} seconds.")
+    endif()
+endif()
+
 # -----------------------------------------------------------------------------
 # Derive State Machine Name
 # -----------------------------------------------------------------------------
@@ -69,19 +82,6 @@ endif()
 # -----------------------------------------------------------------------------
 
 # Serialize concurrent filter invocations (Doxygen may call this in parallel).
-
-# Override lock timeout from environment if valid.
-if(DEFINED ENV{DOC_FILTER_LOCK_TIMEOUT} AND NOT "$ENV{DOC_FILTER_LOCK_TIMEOUT}" STREQUAL "")
-    string(STRIP "$ENV{DOC_FILTER_LOCK_TIMEOUT}" _DOC_FILTER_LOCK_TIMEOUT_STRIPPED)
-    string(REGEX MATCH "^[0-9]+$" _DOC_FILTER_LOCK_TIMEOUT_IS_INT "${_DOC_FILTER_LOCK_TIMEOUT_STRIPPED}")
-    if(_DOC_FILTER_LOCK_TIMEOUT_IS_INT)
-        set(FILTER_LOCK_TIMEOUT "${_DOC_FILTER_LOCK_TIMEOUT_STRIPPED}")
-    else()
-        message(WARNING
-            "Ignoring invalid DOC_FILTER_LOCK_TIMEOUT value '$ENV{DOC_FILTER_LOCK_TIMEOUT}'. "
-            "Expected a non-negative integer number of seconds. Using default ${FILTER_LOCK_TIMEOUT} seconds.")
-    endif()
-endif()
 
 file(LOCK "${LOCK_FILE}" TIMEOUT ${FILTER_LOCK_TIMEOUT} RESULT_VARIABLE lock_result)
 if(NOT lock_result STREQUAL "0")
