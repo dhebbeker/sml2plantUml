@@ -132,4 +132,10 @@ string(CONCAT DOC_BLOCK
 file(READ "${HEADER_ABS}" CONTENT)
 set(FILTER_OUTPUT_FILE "${BUILD_DIR}/_filter_output_${STATE_MACHINE_NAME}.tmp")
 file(WRITE "${FILTER_OUTPUT_FILE}" "${CONTENT}\n${DOC_BLOCK}")
-execute_process(COMMAND ${CMAKE_COMMAND} -E cat "${FILTER_OUTPUT_FILE}")
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -E cat "${FILTER_OUTPUT_FILE}"
+    RESULT_VARIABLE cat_result
+)
+if(cat_result EQUAL 0)
+    file(REMOVE "${FILTER_OUTPUT_FILE}")
+endif()
