@@ -29,7 +29,11 @@ jobs:
         run: |
           choco install doxygen.install --yes
           choco install plantuml --yes
-          "C:\Program Files\doxygen\bin" >> $env:GITHUB_PATH
+          $doxygen = Get-Command doxygen -ErrorAction SilentlyContinue
+          if (-not $doxygen) {
+            $doxygen = Get-ChildItem -Path "$env:ChocolateyInstall\bin" -Filter "doxygen.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($doxygen) { Split-Path $doxygen.FullName >> $env:GITHUB_PATH }
+          }
 
       - name: Append PLANTUML_JAR_PATH to Doxyfile (Linux)
         if: runner.os == 'Linux'
