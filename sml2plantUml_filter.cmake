@@ -62,7 +62,7 @@ if(NOT lock_result STREQUAL "0")
 endif()
 execute_process(
     COMMAND
-        cmake -G Ninja -S "${SOURCE_DIR}" -B "${BUILD_DIR}" ${TOOLCHAIN_ARG}
+        cmake --fresh -G Ninja -S "${SOURCE_DIR}" -B "${BUILD_DIR}" ${TOOLCHAIN_ARG}
         ${EXTRA_CXX_FLAGS} ${EXTRA_INCLUDE_DIRS}
         -DHEADER_TO_CHECK="${HEADER_ABS}"
         -DSTATE_MACHINE_NAME="${STATE_MACHINE_NAME}"
