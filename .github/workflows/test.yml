@@ -35,6 +35,11 @@ jobs:
             if ($doxygen) { Split-Path $doxygen.FullName >> $env:GITHUB_PATH }
           }
 
+      - name: Build helper tool (test preconditions)
+        run: |
+          cmake -S . -B build -DHEADER_TO_CHECK="exampleSM_state_machine_sml.hpp" -DSTATE_MACHINE_NAME=exampleSM
+          cmake --build build
+
       - name: Append PLANTUML_JAR_PATH to Doxyfile (Linux)
         if: runner.os == 'Linux'
         run: |
