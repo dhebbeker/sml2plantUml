@@ -44,3 +44,12 @@ target_compile_definitions(
 )
 
 target_link_libraries(StateMachine2Puml PRIVATE sml)
+
+option(BUILD_TESTING "Build regression tests" OFF)
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(type_name_tests tests/type_name_tests.cpp)
+    target_include_directories(type_name_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(type_name_tests PRIVATE sml)
+    add_test(NAME type_name_tests COMMAND type_name_tests)
+endif()
