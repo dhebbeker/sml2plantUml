@@ -151,6 +151,7 @@ execute_process(
     COMMAND "${APP_PATH}"
     OUTPUT_VARIABLE PUML_CONTENT
     RESULT_VARIABLE run_result
+    ENCODING UTF-8
 )
 
 file(LOCK "${LOCK_FILE}" RELEASE)
@@ -180,6 +181,7 @@ file(WRITE "${FILTER_OUTPUT_FILE}" "${CONTENT}\n${DOC_BLOCK}")
 execute_process(
     COMMAND ${CMAKE_COMMAND} -E cat "${FILTER_OUTPUT_FILE}"
     RESULT_VARIABLE cat_result
+    ENCODING UTF-8
 )
 if(cat_result EQUAL 0)
     file(REMOVE "${FILTER_OUTPUT_FILE}")
