@@ -21,6 +21,7 @@
 #include <iostream>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <typeinfo>
 #include <utility>
@@ -28,6 +29,42 @@
 
 // Namespace alias for convenience
 namespace sml = boost::ext::sml;
+
+inline std::string normalize_type_name(std::string_view name) {
+  std::string result;
+  bool type_start = true;
+  while (!name.empty()) {
+    if (type_start) {
+      bool removed = false;
+      for (const auto prefix : {"struct ", "class ", "enum ", "union "}) {
+        if (name.starts_with(prefix)) {
+          name.remove_prefix(std::string_view{prefix}.size());
+          removed = true;
+          break;
+        }
+      }
+      if (removed) {
+        continue;
+      }
+    }
+    const char ch = name.front();
+    result += ch;
+    name.remove_prefix(1);
+    if (ch != ' ' && ch != '\t') {
+      type_start = ch == '<' || ch == ',' || ch == '(';
+    }
+  }
+  return result;
+}
+
+template <class T> std::string plantuml_name() {
+  if constexpr (requires { T::c_str(); }) {
+    // Literal names and SML's special event/state names are not type names.
+    return T::c_str();
+  } else {
+    return normalize_type_name(sml::aux::string<T>{}.c_str());
+  }
+}
 
 inline void do_indent(std::ostream &out, unsigned int indent) {
   out << std::string(indent, ' ');
@@ -157,9 +194,7 @@ struct print_seq_types { // NOLINT(readability-identifier-naming)
         print_seq_types<typename current_type::type>::template func<0>(out);
       } else { // NOLINT(readability-misleading-indentation)
         // print this param directly
-        out << sml::aux::string<
-                   typename strip_zero_wrapper<current_type>::type>{}
-                   .c_str();
+        out << plantuml_name<typename strip_zero_wrapper<current_type>::type>();
       }
       if constexpr (
           I + 1 <
@@ -202,7 +237,7 @@ struct print_guard { // NOLINT(readability-identifier-naming)
             template func<0>(out);
       } else { // NOLINT(readability-misleading-indentation)
         // it's just a functor, print it
-        out << sml::aux::string<current_type>{}.c_str();
+        out << plantuml_name<current_type>();
       }
 
       // if we're not at the end, print the separator
@@ -225,8 +260,7 @@ struct print_guard<
     sml::front::not_<T>> { // NOLINT(readability-identifier-naming)
   template <int I>
   static void func(std::ostream &out, const std::string & /*sep*/ = "") {
-    out << "!"
-        << sml::aux::string<typename strip_zero_wrapper<T>::type>{}.c_str();
+    out << "!" << plantuml_name<typename strip_zero_wrapper<T>::type>();
   }
 };
 template <class... Ts>
@@ -267,21 +301,17 @@ template <int N, class T> void dump_transition(std::ostream &out) noexcept {
   // NOLINTNEXTLINE(readability-braces-around-statements)
   if constexpr (src_is_sub_sm) {
     src_state =
-        std::string{sml::aux::string<
-                        typename submachine_type<typename T::src_state>::type>{}
-                        .c_str()};
+        plantuml_name<typename submachine_type<typename T::src_state>::type>();
   } else { // NOLINT(readability-misleading-indentation)
-    src_state = std::string{sml::aux::string<typename T::src_state>{}.c_str()};
+    src_state = plantuml_name<typename T::src_state>();
   }
 
   // NOLINTNEXTLINE(readability-braces-around-statements)
   if constexpr (dst_is_sub_sm) {
     dst_state =
-        std::string{sml::aux::string<
-                        typename submachine_type<typename T::dst_state>::type>{}
-                        .c_str()};
+        plantuml_name<typename submachine_type<typename T::dst_state>::type>();
   } else { // NOLINT(readability-misleading-indentation)
-    dst_state = std::string{sml::aux::string<typename T::dst_state>{}.c_str()};
+    dst_state = plantuml_name<typename T::dst_state>();
   }
 
   const auto dst_internal =
@@ -299,7 +329,7 @@ template <int N, class T> void dump_transition(std::ostream &out) noexcept {
                         sml::front::actions::defer>::value) {
     do_indent(out, N);
     out << src_state << " : "
-        << boost::sml::aux::get_type_name<typename T::event>() << " / defer\n";
+        << plantuml_name<typename T::event>() << " / defer\n";
     return;
   }
 
@@ -350,7 +380,7 @@ template <int N, class T> void dump_transition(std::ostream &out) noexcept {
   }
 
   if (has_event) {
-    out << " " << std::string{sml::aux::string<typename T::event>{}.c_str()};
+    out << " " << plantuml_name<typename T::event>();
   }
 
   if (has_guard) {
@@ -368,7 +398,7 @@ template <int N, class T> void dump_transition(std::ostream &out) noexcept {
       print_seq_types<typename T::action::type>::template func<0>(out);
       out << ")";
     } else { // NOLINT(readability-misleading-indentation)
-      out << sml::aux::string<typename T::action::type>{}.c_str();
+      out << plantuml_name<typename T::action::type>();
     }
   }
 
