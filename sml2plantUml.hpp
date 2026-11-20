@@ -18,6 +18,7 @@
 #pragma once
 #include <algorithm>
 #include <boost/sml.hpp>
+#include <cctype>
 #include <iostream>
 #include <ostream>
 #include <string>
@@ -70,12 +71,59 @@ inline void do_indent(std::ostream &out, unsigned int indent) {
   out << std::string(indent, ' ');
 }
 
+/** PlantUML identifier of a state: \p name qualified by \p scope, with
+ * every character but letters, digits and '_' replaced by '_'.
+ * PlantUML rejects other characters in identifiers and merges states with
+ * equal identifiers, even across composite states.
+ */
+inline std::string plantuml_id(const std::string &scope,
+                               std::string_view name) {
+  std::string id = scope.empty() ? std::string{} : scope + "__";
+  for (const char ch : name) {
+    const bool valid =
+        std::isalnum(static_cast<unsigned char>(ch)) != 0 || ch == '_';
+    id += valid ? ch : '_';
+  }
+  return id;
+}
+
 // use this to track initialization for orthogonal states
 bool state_initialized = false; // NOLINT(misc-definitions-in-headers)
 // use this to track which submachines have already been dumped so they don't
 // get dumped twice
 std::vector<std::string>
     completed_submachines; // NOLINT(misc-definitions-in-headers)
+// use this to track which states have already been declared with a display
+// name differing from their identifier
+std::vector<std::string>
+    declared_states; // NOLINT(misc-definitions-in-headers)
+
+/** Returns the identifier of the simple state \p name in \p scope.
+ * On first use, declares its display name if it differs from the identifier.
+ */
+inline std::string state_ref(std::ostream &out, unsigned int indent,
+                             const std::string &scope,
+                             const std::string &name) {
+  if (name == "[*]") {
+    return name;
+  }
+  auto id = plantuml_id(scope, name);
+  if (id != name && std::find(declared_states.begin(), declared_states.end(),
+                              id) == declared_states.end()) {
+    declared_states.push_back(id);
+    do_indent(out, indent);
+    out << "state \"" << name << "\" as " << id << "\n";
+  }
+  return id;
+}
+
+/** Identifier of the sub state machine \p SubSm in \p scope.
+ * Based on the type name, as the display name may be chosen by `c_str()`.
+ */
+template <class SubSm> std::string submachine_id(const std::string &scope) {
+  return plantuml_id(scope,
+                     normalize_type_name(sml::aux::get_type_name<SubSm>()));
+}
 
 /** allows for checking if the type is sml::front::seq_
  * This type is used by sml when there are lists of actions.
@@ -289,30 +337,42 @@ struct print_guard<
 // forward declaration of dump_transitions
 template <typename...> struct dump_transitions;
 
-template <int N, class T> void dump_transition(std::ostream &out) noexcept {
+/** Dumps the composite state \p id of the sub state machine \p SubSm, once.
+ * Its display name is the name of \p SubSm, which may be set by `c_str()`.
+ */
+template <int N, class SubSmState, class SubSm>
+void dump_submachine(std::ostream &out, const std::string &id) {
+  if (std::find(completed_submachines.begin(), completed_submachines.end(),
+                id) != completed_submachines.end()) {
+    return;
+  }
+  completed_submachines.push_back(id);
+  const auto name = plantuml_name<SubSm>();
+  do_indent(out, N);
+  out << "state ";
+  if (name != id) {
+    out << "\"" << name << "\" as ";
+  }
+  out << id << " {\n";
+  const bool prev_state = state_initialized;
+  state_initialized = false;
+  dump_transitions<typename SubSmState::transitions>::template func<N + 2>(
+      out, id);
+  do_indent(out, N);
+  out << "}\n";
+  state_initialized = prev_state;
+}
+
+template <int N, class T>
+void dump_transition(std::ostream &out, const std::string &scope) noexcept {
   constexpr auto src_is_sub_sm =
       !sml::aux::is_same<sml::aux::type_list<>,
                          sml::back::get_sub_sms<typename T::src_state>>::value;
   constexpr auto dst_is_sub_sm =
       !sml::aux::is_same<sml::aux::type_list<>,
                          sml::back::get_sub_sms<typename T::dst_state>>::value;
-
-  std::string src_state, dst_state;
-  // NOLINTNEXTLINE(readability-braces-around-statements)
-  if constexpr (src_is_sub_sm) {
-    src_state =
-        plantuml_name<typename submachine_type<typename T::src_state>::type>();
-  } else { // NOLINT(readability-misleading-indentation)
-    src_state = plantuml_name<typename T::src_state>();
-  }
-
-  // NOLINTNEXTLINE(readability-braces-around-statements)
-  if constexpr (dst_is_sub_sm) {
-    dst_state =
-        plantuml_name<typename submachine_type<typename T::dst_state>::type>();
-  } else { // NOLINT(readability-misleading-indentation)
-    dst_state = plantuml_name<typename T::dst_state>();
-  }
+  using src_sub_sm = typename submachine_type<typename T::src_state>::type;
+  using dst_sub_sm = typename submachine_type<typename T::dst_state>::type;
 
   const auto dst_internal =
       sml::aux::is_same<typename T::dst_state, sml::front::internal>::value;
@@ -323,26 +383,47 @@ template <int N, class T> void dump_transition(std::ostream &out) noexcept {
       !sml::aux::is_same<typename T::guard, sml::front::always>::value;
   const auto has_action =
       !sml::aux::is_same<typename T::action, sml::front::none>::value;
-
-  if (has_event && has_action &&
+  const auto is_defer =
+      has_event && has_action &&
       sml::aux::is_same<typename T::action::type,
-                        sml::front::actions::defer>::value) {
+                        sml::front::actions::defer>::value;
+
+  // Before the state declarations below, which belong to the new region.
+  if (!is_defer && T::initial && state_initialized) {
+    do_indent(out, N);
+    out << "--\n"; // create an orthogonal section
+  }
+
+  std::string src_state, dst_state;
+  // NOLINTNEXTLINE(readability-braces-around-statements)
+  if constexpr (src_is_sub_sm) {
+    src_state = submachine_id<src_sub_sm>(scope);
+  } else { // NOLINT(readability-misleading-indentation)
+    src_state =
+        state_ref(out, N, scope, plantuml_name<typename T::src_state>());
+  }
+
+  // NOLINTNEXTLINE(readability-braces-around-statements)
+  if constexpr (dst_is_sub_sm) {
+    dst_state = submachine_id<dst_sub_sm>(scope);
+  } else { // NOLINT(readability-misleading-indentation)
+    if (!dst_internal) {
+      auto dst_name = plantuml_name<typename T::dst_state>();
+      if (dst_name == "terminate") {
+        dst_name = "[*]";
+      }
+      dst_state = state_ref(out, N, scope, dst_name);
+    }
+  }
+
+  if (is_defer) {
     do_indent(out, N);
     out << src_state << " : "
         << plantuml_name<typename T::event>() << " / defer\n";
     return;
   }
 
-  if (dst_state == "terminate") {
-    dst_state = "[*]";
-  }
-
   if (T::initial) {
-    if (state_initialized) { // create an orthogonal section
-      do_indent(out, N);
-      out << "--\n";
-    }
-
     state_initialized = true;
     do_indent(out, N);
     out << "[*] --> " << src_state << "\n";
@@ -351,22 +432,7 @@ template <int N, class T> void dump_transition(std::ostream &out) noexcept {
   // NOLINTNEXTLINE(readability-braces-around-statements,
   // bugprone-suspicious-semicolon)
   if constexpr (src_is_sub_sm) {
-    auto already_in =
-        std::find(completed_submachines.begin(), completed_submachines.end(),
-                  src_state) != completed_submachines.end();
-    if (!already_in) {
-      completed_submachines.push_back(src_state);
-      constexpr int indent = N + 2;
-      do_indent(out, N);
-      out << "state " << src_state << " {\n";
-      bool prev_state = state_initialized;
-      state_initialized = false;
-      dump_transitions<typename T::src_state::transitions>::template func<
-          indent>(out);
-      do_indent(out, N);
-      out << "}\n";
-      state_initialized = prev_state;
-    }
+    dump_submachine<N, typename T::src_state, src_sub_sm>(out, src_state);
   }
 
   do_indent(out, N);
@@ -407,22 +473,7 @@ template <int N, class T> void dump_transition(std::ostream &out) noexcept {
   // NOLINTNEXTLINE(readability-braces-around-statements,
   // bugprone-suspicious-semicolon)
   if constexpr (dst_is_sub_sm) {
-    auto already_in =
-        std::find(completed_submachines.begin(), completed_submachines.end(),
-                  dst_state) != completed_submachines.end();
-    if (!already_in) {
-      completed_submachines.push_back(dst_state);
-      constexpr int indent = N + 2;
-      do_indent(out, N);
-      out << "state " << dst_state << " {\n";
-      bool prev_state = state_initialized;
-      state_initialized = false;
-      dump_transitions<typename T::dst_state::transitions>::template func<
-          indent>(out);
-      do_indent(out, N);
-      out << "}\n";
-      state_initialized = prev_state;
-    }
+    dump_submachine<N, typename T::dst_state, dst_sub_sm>(out, dst_state);
   }
 }
 
@@ -430,24 +481,26 @@ template <int N, class T> void dump_transition(std::ostream &out) noexcept {
 // I is the counter
 // INDENT is the current indentation level (for the state machine or sub-state
 // machine)
+// scope is the identifier of the enclosing sub state machine, if any
 template <int INDENT, int I, class... Ts>
-void apply_dump_transition(std::ostream &out) {
+void apply_dump_transition(std::ostream &out, const std::string &scope) {
   // iteration is finished when I == the size of the parameter pack
   constexpr auto param_pack_empty = (sizeof...(Ts) == I);
   if constexpr (
       !param_pack_empty) { // NOLINT(readability-braces-around-statements,bugprone-suspicious-semicolon)
     // run the dump_transition function to print this sml::front::transition
     // type
-    dump_transition<INDENT, NthTypeOf<I, Ts...>>(out);
+    dump_transition<INDENT, NthTypeOf<I, Ts...>>(out, scope);
     // iteration isn't finished, keep going
-    apply_dump_transition<INDENT, I + 1, Ts...>(out);
+    apply_dump_transition<INDENT, I + 1, Ts...>(out, scope);
   }
 }
 
 // SFINAE type
 template <typename...>
 struct dump_transitions { // NOLINT(readability-identifier-naming)
-  template <int INDENT> static void func(std::ostream &) {}
+  template <int INDENT>
+  static void func(std::ostream &, const std::string & = {}) {}
 };
 
 // Partial specialization for sml::aux::type_list<Ts...>. This grants access to
@@ -456,8 +509,9 @@ struct dump_transitions { // NOLINT(readability-identifier-naming)
 template <typename... Ts>
 struct dump_transitions<typename sml::aux::type_list<
     Ts...>> { // NOLINT(readability-identifier-naming)
-  template <int INDENT> static void func(std::ostream &out) {
-    apply_dump_transition<INDENT, 0, Ts...>(out);
+  template <int INDENT>
+  static void func(std::ostream &out, const std::string &scope = {}) {
+    apply_dump_transition<INDENT, 0, Ts...>(out, scope);
   }
 };
 
@@ -475,6 +529,9 @@ struct dump_transitions<typename sml::aux::type_list<
 template <class T> void dump(std::ostream &out) noexcept {
   using transitions_t = decltype(std::declval<T>()());
   using transitions = sml::aux::apply_t<sml::aux::type_list, transitions_t>;
+  state_initialized = false;
+  completed_submachines.clear();
+  declared_states.clear();
   out << "@startuml\n\n";
   dump_transitions<transitions>::template func<0>(out);
   out << "\n@enduml\n";

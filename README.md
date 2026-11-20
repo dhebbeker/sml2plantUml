@@ -37,6 +37,29 @@ making it easy to visualize and document your state machine designs.
 - In each such file, only one transition table may be transformed to
   a PlantUML diagram.
 
+## Names of sub state machines
+
+A sub state machine is displayed with the name of its C++ type,
+e.g. `ns::Sequence<ns::Id::Pre>`.
+A static member function `c_str()` of that type overrides the name,
+just as it does for Boost.SML itself:
+
+```cpp
+template <Id ID> struct Sequence {
+  static constexpr const char *c_str() {
+    return ID == Id::Pre ? "PreSequence" : "PostSequence";
+  }
+  auto operator()() const { /* transition table */ }
+};
+```
+
+The PlantUML identifiers of states are derived from the state names and
+the type names of sub state machines:
+characters which PlantUML does not accept are replaced and
+the states of a sub state machine are qualified by its identifier.
+Hence namespaces and templates may be used for sub state machines, and
+states with equal names in different sub state machines are kept apart.
+
 ## Direct Usage (without Doxygen)
 
 ```
